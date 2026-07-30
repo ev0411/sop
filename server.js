@@ -424,7 +424,8 @@ function readJsonBody(req) {
 }
 
 function serveStatic(req, res) {
-  const requestedPath = req.url === "/" ? "/index.html" : decodeURIComponent(req.url.split("?")[0]);
+  const url = new URL(req.url, BASE_URL);
+  const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   const filePath = path.normalize(path.join(PUBLIC_DIR, requestedPath));
 
   if (!filePath.startsWith(PUBLIC_DIR) || filePath.includes(`${path.sep}.git${path.sep}`)) {
@@ -433,6 +434,17 @@ function serveStatic(req, res) {
   }
 
   fs.readFile(filePath, (error, data) => {
+    if (error && !path.extname(filePath)) {
+      fs.readFile(path.join(PUBLIC_DIR, "index.html"), (indexError, indexData) => {
+        if (indexError) {
+          sendText(res, 404, "Not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": mimeTypes[".html"] });
+        res.end(indexData);
+      });
+      return;
+    }
     if (error) {
       sendText(res, 404, "Not found");
       return;
