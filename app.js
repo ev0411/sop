@@ -13,7 +13,12 @@ const seedState = {
   status: "全部",
   direction: "全部",
   taskDraft: null,
+  weeklyAiText: "把公司客户 Aurora Trading 的 Extract 文件和资金来源证明列入本周待办，2026-08-02 前完成，提前 1 周提醒。",
+  weeklyAiImageName: "",
   intakeText: "公司客户 Aurora Trading 需要在 2026-08-07 前完成 KYC/KYB，操作 CNY to AUD，需要提前 1 周提醒；目前进度：国内付款人确认中。还要补充 Extract 文件和资金来源证明。",
+  emailConnected: false,
+  emailLastSync: "",
+  emailProvider: "Gmail / Outlook",
   tasks: [
     {
       id: crypto.randomUUID(),
@@ -195,7 +200,7 @@ function filteredTasks() {
     });
 }
 
-function classifyText(text) {
+function classifyText(text, source = "文字识别") {
   const rules = [
     { keys: ["护照", "photo id", "地址证明", "资金来源", "资金用途", "材料"], category: "业务端", subcategory: "客户材料收集" },
     { keys: ["kyc", "kyb", "合规", "付款人", "收款人", "交易方向"], category: "业务端", subcategory: "业务机会跟进" },
@@ -225,8 +230,8 @@ function classifyText(text) {
     reminder: lower.includes("提前 1 周") ? "提前 1 周提醒" : lower.includes("当周") ? "当周提醒" : "指定日期提醒",
     status: "待确认",
     priority: lower.includes("紧急") || lower.includes("逾期") ? "高" : "中",
-    source: "文字识别",
-    sourceLink: "粘贴文本",
+    source,
+    sourceLink: source === "图片识别" ? "图片上传" : source === "邮件读取" ? "邮箱同步" : "粘贴文本",
     owner: "本人",
     updatedAt: nowStamp(),
     notes: text,
@@ -262,6 +267,7 @@ function render() {
         <nav class="nav">
           ${navButton("weekly", "每周总表", state.tasks.length)}
           ${navButton("intake", "自动分类", state.tasks.filter((t) => t.source.includes("识别")).length)}
+          ${navButton("email", "链接邮箱", state.emailConnected ? "已连" : "未连")}
           ${navButton("clients", "客户材料", state.clients.length)}
           ${navButton("business", "业务机会", state.tasks.filter((t) => t.subcategory === "业务机会跟进").length)}
           ${navButton("docs", "文件/行政", state.tasks.filter((t) => ["文件/合同", "行政类", "市场营销", "活动追踪"].includes(t.category)).length)}
@@ -307,6 +313,7 @@ function viewTitle() {
   return {
     weekly: "每周 To Do List 总表",
     intake: "自动读取与自动分类",
+    email: "链接邮箱与邮件任务分类",
     clients: "客户材料收集",
     business: "业务机会跟进",
     docs: "文件、合同与行政任务",
@@ -317,6 +324,7 @@ function viewTitle() {
 
 function renderView(tasks) {
   if (state.view === "intake") return renderIntake();
+  if (state.view === "email") return renderEmail();
   if (state.view === "clients") return renderClients();
   if (state.view === "business") return renderBusiness();
   if (state.view === "docs") return renderDocs();
@@ -326,7 +334,33 @@ function renderView(tasks) {
 }
 
 function renderWeekly(tasks) {
+  const previewText = state.weeklyAiImageName
+    ? `${state.weeklyAiText}\n图片 OCR：从 ${state.weeklyAiImageName} 中识别待办、日期、客户名称和文件事项。`
+    : state.weeklyAiText;
+  const preview = classifyText(previewText || "");
   return `
+    <section class="panel ai-panel">
+      <div class="panel-head">
+        <h3>AI 识别工作内容</h3>
+        <span class="badge private">文字 / 图片识别后需确认</span>
+      </div>
+      <div class="panel-body ai-intake-grid">
+        <div class="source-box">
+          <textarea class="textarea" data-weekly-ai-text placeholder="粘贴聊天记录、邮件片段、会议纪要，或描述图片里的工作内容">${escapeHtml(state.weeklyAiText)}</textarea>
+          <label class="upload-zone">
+            <input type="file" data-weekly-ai-image accept="image/*" />
+            <span>选择图片进行 OCR 识别</span>
+            <b>${state.weeklyAiImageName ? escapeHtml(state.weeklyAiImageName) : "未选择图片"}</b>
+          </label>
+        </div>
+        <div class="classification-preview compact">
+          <div><b>自动分类：</b>${preview.category} / ${preview.subcategory}</div>
+          <div><b>对象：</b>${preview.object}　<b>截止：</b>${preview.dueDate}　<b>提醒：</b>${preview.reminder}</div>
+          <div><b>来源：</b>${state.weeklyAiImageName ? "图片识别 + 文字识别" : "文字识别"}　<b>状态：</b>待确认</div>
+          <button class="btn primary" data-action="add-weekly-ai-task">加入本周待办</button>
+        </div>
+      </div>
+    </section>
     <section class="grid">
       <div class="panel">
         <div class="panel-head">
@@ -344,6 +378,44 @@ function renderWeekly(tasks) {
           <div><b>当日提醒：</b>${state.tasks.filter((t) => t.followDate <= today && t.status !== "已完成").map((t) => t.title).join("、")}</div>
           <div><b>数据来源：</b>手动输入、文本粘贴、图片 OCR、邮件读取、采购实时搜索、历史任务记录。</div>
           <div><b>归档逻辑：</b>完成任务进入历史周归档；未完成任务可带入下周；逾期任务保留标记。</div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderEmail() {
+  const preview = classifyText("邮件读取：客户邮件要求 2026-08-04 前补充 KYC 材料、地址证明和资金用途证明，需要当周提醒。", "邮件读取");
+  return `
+    <section class="grid">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>邮箱连接</h3>
+          <span class="badge ${state.emailConnected ? "ok" : "private"}">${state.emailConnected ? "已连接" : "未连接"}</span>
+        </div>
+        <div class="panel-body source-box">
+          <div class="email-status">
+            <strong>${state.emailProvider}</strong>
+            <span>${state.emailConnected ? `上次同步：${state.emailLastSync || "尚未同步"}` : "连接后可读取邮件主题、发件人、正文待办、附件名和截止日期"}</span>
+          </div>
+          <div class="toolbar">
+            <button class="btn primary" data-action="connect-email">${state.emailConnected ? "重新授权" : "链接邮箱"}</button>
+            <button class="btn" data-action="sync-email">读取邮件并分类</button>
+          </div>
+          <div class="classification-preview">
+            <div><b>识别示例：</b>${preview.title}</div>
+            <div><b>自动匹配：</b>${preview.category} / ${preview.subcategory}</div>
+            <div><b>安全边界：</b>只读取并生成待确认任务，不自动发送邮件或回复。</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>邮件匹配规则</h3></div>
+        <div class="panel-body detail-list">
+          <div><b>邮件主题：</b>匹配客户名、公司名、合同、报价、活动和采购关键词。</div>
+          <div><b>正文内容：</b>提取待办事项、截止日期、是否需要回复/填写/上传/跟进。</div>
+          <div><b>附件名称：</b>识别表格、合同、图片、证件材料，并归入对应模块。</div>
+          <div><b>进入总表：</b>读取后自动生成“待确认”任务，用户确认后进入当周 To Do。</div>
         </div>
       </div>
     </section>
@@ -620,6 +692,17 @@ function bindEvents() {
     saveState();
     render();
   });
+  document.querySelector("[data-weekly-ai-text]")?.addEventListener("input", (event) => {
+    state.weeklyAiText = event.target.value;
+    saveState();
+    render();
+  });
+  document.querySelector("[data-weekly-ai-image]")?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    state.weeklyAiImageName = file ? file.name : "";
+    saveState();
+    render();
+  });
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button.dataset.action)));
   document.querySelectorAll("[data-edit]").forEach((button) =>
     button.addEventListener("click", () => {
@@ -680,6 +763,27 @@ function handleAction(action) {
   }
   if (action === "confirm-intake") {
     state.tasks.unshift(classifyText(state.intakeText));
+    state.view = "weekly";
+  }
+  if (action === "add-weekly-ai-task") {
+    const source = state.weeklyAiImageName ? "图片识别" : "文字识别";
+    const text = state.weeklyAiImageName
+      ? `${state.weeklyAiText}\n图片 OCR：从 ${state.weeklyAiImageName} 中识别待办、日期、客户名称和文件事项。`
+      : state.weeklyAiText;
+    state.tasks.unshift(classifyText(text, source));
+    state.weeklyAiText = "";
+    state.weeklyAiImageName = "";
+  }
+  if (action === "connect-email") {
+    state.emailConnected = true;
+    state.emailLastSync = "等待同步";
+  }
+  if (action === "sync-email") {
+    state.emailConnected = true;
+    state.emailLastSync = nowStamp();
+    state.tasks.unshift(
+      classifyText("邮件读取：客户邮件要求 2026-08-04 前补充 KYC 材料、地址证明和资金用途证明，需要当周提醒。", "邮件读取")
+    );
     state.view = "weekly";
   }
   if (action === "simulate-ocr") {

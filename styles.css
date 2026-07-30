@@ -224,6 +224,17 @@ button {
   gap: 18px;
 }
 
+.ai-panel {
+  margin-bottom: 18px;
+}
+
+.ai-intake-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -464,10 +475,37 @@ label {
   gap: 10px;
 }
 
+.upload-zone {
+  min-height: 76px;
+  padding: 13px;
+  border: 1px dashed #b7c8c1;
+  border-radius: 8px;
+  background: #f6faf8;
+  color: var(--muted);
+}
+
+.upload-zone input {
+  width: 100%;
+}
+
+.upload-zone span,
+.upload-zone b {
+  display: block;
+}
+
+.upload-zone b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .classification-preview {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.classification-preview.compact {
+  margin-top: 0;
 }
 
 .classification-preview div {
@@ -475,6 +513,23 @@ label {
   border-radius: 8px;
   background: #f4f7f5;
   border: 1px solid var(--line);
+}
+
+.email-status {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--soft);
+  border: 1px solid #cfe2dc;
+}
+
+.email-status strong {
+  font-size: 18px;
+}
+
+.email-status span {
+  color: var(--muted);
 }
 
 .modal-backdrop {
@@ -539,6 +594,7 @@ label {
   }
 
   .grid,
+  .ai-intake-grid,
   .purchase-layout {
     grid-template-columns: 1fr;
   }
