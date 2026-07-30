@@ -263,7 +263,7 @@ function render() {
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">WD</div>
+          <div class="brand-mark">EV</div>
           <div>
             <h1>工作 Dashboard</h1>
             <p>Weekly operating desk</p>
@@ -271,11 +271,11 @@ function render() {
         </div>
         <nav class="nav">
           ${navButton("weekly", "每周总表", state.tasks.length)}
-          ${navButton("intake", "自动分类", state.tasks.filter((t) => t.source.includes("识别")).length)}
+          ${navButton("intake", "手动分类", state.tasks.filter((t) => t.source.includes("识别")).length)}
           ${navButton("email", "链接邮箱", state.emailConnected ? "已连" : "未连")}
           ${navButton("clients", "客户材料", state.clients.length)}
           ${navButton("business", "业务机会", state.tasks.filter((t) => t.subcategory === "业务机会跟进").length)}
-          ${navButton("docs", "文件/行政", state.tasks.filter((t) => ["文件/合同", "行政类", "市场营销", "活动追踪"].includes(t.category)).length)}
+          ${navButton("docs", "行政任务", state.tasks.filter((t) => ["文件/合同", "行政类", "市场营销", "活动追踪"].includes(t.category)).length)}
           ${navButton("purchase", "采购 Agent", state.purchase.products.length)}
           ${navButton("history", "历史归档", state.history.length)}
         </nav>
@@ -286,6 +286,7 @@ function render() {
           <div class="hero">
             <h2>${viewTitle()}</h2>
             <p>今天是 2026-07-30。聚合待办、提醒、客户材料、业务进度与历史复盘。</p>
+            <p class="motto">人情可送马，买卖不饶针</p>
           </div>
           <div class="toolbar">
             <button class="btn ghost" data-action="reset">重置示例</button>
@@ -524,13 +525,20 @@ function renderClients() {
       <div class="panel-head"><h3>客户材料收集</h3><div class="tabs">${directions.map((dir) => `<button class="tab ${state.direction === dir ? "active" : ""}" data-dir="${dir}">${dir}</button>`).join("")}</div></div>
       <div class="panel-body module-grid">
         ${state.clients
+          .map((client, index) => ({ ...client, index }))
           .filter((client) => state.direction === "全部" || client.direction === state.direction)
           .map((client) => {
             const pct = Math.round((client.collected.length / client.required.length) * 100);
             const missing = client.required.filter((item) => !client.collected.includes(item));
             return `
               <article class="client-card">
-                <h4>${client.name}</h4>
+                <div class="card-head">
+                  <h4>${escapeHtml(client.name)}</h4>
+                  <div class="mini-actions">
+                    <button title="编辑客户材料" data-client-edit="${client.index}">✎</button>
+                    <button title="删除客户材料" data-client-delete="${client.index}">×</button>
+                  </div>
+                </div>
                 <div class="badge-row"><span class="badge info">${client.type}</span><span class="badge">${client.direction}</span>${client.overdue.length ? `<span class="badge high">${client.overdue.length} 项逾期</span>` : `<span class="badge ok">无逾期</span>`}</div>
                 <div class="progress"><span style="width:${pct}%"></span></div>
                 <div class="detail-list">
@@ -558,7 +566,13 @@ function renderBusiness() {
         ${business.map(
           (task) => `
           <article class="opportunity-card">
-            <h4>${task.object}</h4>
+            <div class="card-head">
+              <h4>${escapeHtml(task.object)}</h4>
+              <div class="mini-actions">
+                <button title="编辑业务机会" data-edit="${task.id}">✎</button>
+                <button title="删除业务机会" data-delete="${task.id}">×</button>
+              </div>
+            </div>
             <div class="badge-row"><span class="badge">${task.clientType}</span><span class="badge info">${task.direction || "无交易方向"}</span><span class="badge ${isOverdue(task) ? "high" : "mid"}">${task.reminder}</span></div>
             <div class="detail-list">
               <div><b>任务：</b>${task.title}</div>
@@ -630,9 +644,15 @@ function renderHistory() {
       <div class="panel-head"><h3>按周归档</h3><button class="btn warn" data-action="archive-done">归档已完成</button></div>
       <div class="panel-body module-grid">
         ${state.history.map(
-          (week) => `
+          (week, index) => `
           <article class="history-card">
-            <h4>${week.week}</h4>
+            <div class="card-head">
+              <h4>${escapeHtml(week.week)}</h4>
+              <div class="mini-actions">
+                <button title="编辑历史归档" data-history-edit="${index}">✎</button>
+                <button title="删除历史归档" data-history-delete="${index}">×</button>
+              </div>
+            </div>
             <div class="detail-list">
               <div><b>任务总数：</b>${week.total}</div>
               <div><b>已完成：</b>${week.done}</div>
@@ -758,6 +778,26 @@ function bindEvents() {
   document.querySelectorAll("[data-delete]").forEach((button) =>
     button.addEventListener("click", () => {
       state.tasks = state.tasks.filter((task) => task.id !== button.dataset.delete);
+      saveState();
+      render();
+    })
+  );
+  document.querySelectorAll("[data-client-edit]").forEach((button) =>
+    button.addEventListener("click", () => editClient(Number(button.dataset.clientEdit)))
+  );
+  document.querySelectorAll("[data-client-delete]").forEach((button) =>
+    button.addEventListener("click", () => {
+      state.clients.splice(Number(button.dataset.clientDelete), 1);
+      saveState();
+      render();
+    })
+  );
+  document.querySelectorAll("[data-history-edit]").forEach((button) =>
+    button.addEventListener("click", () => editHistory(Number(button.dataset.historyEdit)))
+  );
+  document.querySelectorAll("[data-history-delete]").forEach((button) =>
+    button.addEventListener("click", () => {
+      state.history.splice(Number(button.dataset.historyDelete), 1);
       saveState();
       render();
     })
@@ -946,6 +986,71 @@ function archiveTask(id) {
   if (task) task.status = "已完成";
   saveState();
   render();
+}
+
+function editClient(index) {
+  const client = state.clients[index];
+  if (!client) return;
+  const nextName = prompt("客户名称", client.name);
+  if (nextName === null) return;
+  const nextType = prompt("客户类型", client.type);
+  if (nextType === null) return;
+  const nextDirection = prompt("交易方向", client.direction);
+  if (nextDirection === null) return;
+  const nextCollected = prompt("已收集材料，用顿号或逗号分隔", client.collected.join("、"));
+  if (nextCollected === null) return;
+  const nextRequired = prompt("所需材料，用顿号或逗号分隔", client.required.join("、"));
+  if (nextRequired === null) return;
+  const nextOverdue = prompt("逾期/缺失材料，用顿号或逗号分隔", client.overdue.join("、"));
+  if (nextOverdue === null) return;
+  const nextNote = prompt("备注", client.note);
+  if (nextNote === null) return;
+
+  state.clients[index] = {
+    ...client,
+    name: nextName.trim() || client.name,
+    type: nextType.trim() || client.type,
+    direction: nextDirection.trim(),
+    collected: splitList(nextCollected),
+    required: splitList(nextRequired),
+    overdue: splitList(nextOverdue),
+    updatedAt: nowStamp(),
+    note: nextNote.trim(),
+  };
+  saveState();
+  render();
+}
+
+function editHistory(index) {
+  const week = state.history[index];
+  if (!week) return;
+  const nextWeek = prompt("归档周", week.week);
+  if (nextWeek === null) return;
+  const nextTotal = prompt("任务总数", week.total);
+  if (nextTotal === null) return;
+  const nextDone = prompt("已完成", week.done);
+  if (nextDone === null) return;
+  const nextOpen = prompt("未完成", week.open);
+  if (nextOpen === null) return;
+  const nextOverdue = prompt("逾期", week.overdue);
+  if (nextOverdue === null) return;
+
+  state.history[index] = {
+    week: nextWeek.trim() || week.week,
+    total: Number(nextTotal) || 0,
+    done: Number(nextDone) || 0,
+    open: Number(nextOpen) || 0,
+    overdue: Number(nextOverdue) || 0,
+  };
+  saveState();
+  render();
+}
+
+function splitList(value) {
+  return String(value || "")
+    .split(/[、,，\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function escapeHtml(value) {

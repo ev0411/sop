@@ -1,17 +1,17 @@
 :root {
-  --bg: #f6f7f4;
+  --bg: #f4f7fb;
   --panel: #ffffff;
-  --ink: #17201d;
-  --muted: #60706a;
-  --line: #dde4df;
-  --accent: #0f7b6c;
-  --accent-2: #a45125;
-  --accent-3: #315f9f;
+  --ink: #101827;
+  --muted: #5f6f85;
+  --line: #d8e1ee;
+  --accent: #1e90ff;
+  --accent-2: #191970;
+  --accent-3: #00008b;
   --danger: #b3261e;
   --warn: #b26a00;
-  --ok: #177245;
-  --soft: #e9f4f1;
-  --shadow: 0 18px 50px rgba(24, 38, 33, 0.08);
+  --ok: #1f7a5a;
+  --soft: #f0f8ff;
+  --shadow: 0 18px 50px rgba(20, 39, 75, 0.08);
   font-family: Inter, "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
 }
 
@@ -22,8 +22,8 @@
 body {
   margin: 0;
   background:
-    linear-gradient(120deg, rgba(15, 123, 108, 0.11), transparent 30%),
-    linear-gradient(220deg, rgba(164, 81, 37, 0.08), transparent 28%),
+    linear-gradient(120deg, rgba(30, 144, 255, 0.13), transparent 30%),
+    linear-gradient(220deg, rgba(25, 25, 112, 0.08), transparent 28%),
     var(--bg);
   color: var(--ink);
 }
@@ -51,7 +51,7 @@ button {
   top: 0;
   height: 100vh;
   padding: 24px 18px;
-  background: #14231f;
+  background: #121827;
   color: #f8fbf9;
 }
 
@@ -68,8 +68,8 @@ button {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: #1fb49c;
-  color: #09211c;
+  background: #1e90ff;
+  color: #ffffff;
   font-weight: 800;
 }
 
@@ -80,7 +80,7 @@ button {
 
 .brand p {
   margin: 2px 0 0;
-  color: #a9bbb5;
+  color: #b8c5d8;
   font-size: 12px;
 }
 
@@ -94,15 +94,15 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 11px 12px;
-  color: #dce7e3;
+  color: #dce7f5;
   background: transparent;
   border-radius: 8px;
   text-align: left;
 }
 
 .nav button.active {
-  background: #edf8f5;
-  color: #10231e;
+  background: #f0f8ff;
+  color: #101827;
 }
 
 .count {
@@ -115,7 +115,7 @@ button {
 }
 
 .nav button.active .count {
-  background: #cfe9e3;
+  background: #d9ebff;
 }
 
 .sidebar-note {
@@ -126,7 +126,7 @@ button {
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  color: #c6d4cf;
+  color: #cbd6e6;
   font-size: 12px;
   line-height: 1.6;
 }
@@ -154,6 +154,11 @@ button {
   color: var(--muted);
 }
 
+.hero .motto {
+  font-family: "STXingkai", "KaiTi", "Microsoft YaHei", cursive;
+  color: var(--accent-2);
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -168,8 +173,8 @@ button {
   min-height: 38px;
   padding: 9px 13px;
   border-radius: 8px;
-  background: #e6ece8;
-  color: #17201d;
+  background: #e8eef6;
+  color: #101827;
   font-weight: 700;
 }
 
@@ -342,8 +347,8 @@ button {
   min-height: 24px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #edf2ef;
-  color: #40514b;
+  background: #edf3fb;
+  color: #40506a;
   font-size: 12px;
   white-space: nowrap;
 }
@@ -359,13 +364,13 @@ button {
 }
 
 .badge.ok {
-  background: #dbf3e7;
-  color: #12613c;
+  background: #dff4ee;
+  color: #14634a;
 }
 
 .badge.info {
-  background: #e3efff;
-  color: #254f8b;
+  background: #e0efff;
+  color: #163f88;
 }
 
 .badge.private {
@@ -383,7 +388,19 @@ button {
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: #edf2ef;
+  background: #edf3fb;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.card-head h4 {
+  margin: 0;
 }
 
 .module-grid {
@@ -412,7 +429,7 @@ button {
 .progress {
   height: 9px;
   border-radius: 999px;
-  background: #edf1ee;
+  background: #edf3fb;
   overflow: hidden;
   margin: 10px 0;
 }
@@ -444,8 +461,8 @@ button {
   min-height: 34px;
   padding: 7px 11px;
   border-radius: 8px;
-  background: #eef2ef;
-  color: #40514b;
+  background: #edf3fb;
+  color: #40506a;
 }
 
 .tab.active {
@@ -478,9 +495,9 @@ label {
 .upload-zone {
   min-height: 76px;
   padding: 13px;
-  border: 1px dashed #b7c8c1;
+  border: 1px dashed #b8c7dc;
   border-radius: 8px;
-  background: #f6faf8;
+  background: #f7fbff;
   color: var(--muted);
 }
 
@@ -511,7 +528,7 @@ label {
 .classification-preview div {
   padding: 10px;
   border-radius: 8px;
-  background: #f4f7f5;
+  background: #f6f9fd;
   border: 1px solid var(--line);
 }
 
@@ -521,7 +538,7 @@ label {
   padding: 14px;
   border-radius: 8px;
   background: var(--soft);
-  border: 1px solid #cfe2dc;
+  border: 1px solid #d2e5fa;
 }
 
 .email-status strong {
@@ -598,7 +615,7 @@ label {
   white-space: pre-wrap;
   line-height: 1.6;
   padding: 12px;
-  background: #f6f8f6;
+  background: #f7f9fc;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
