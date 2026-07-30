@@ -1,6 +1,6 @@
 # 工作个人 Dashboard
 
-这是一个根据需求文档生成的个人工作 Dashboard 静态网站原型。
+这是一个根据需求文档生成的个人工作 Dashboard 交互式原型，支持通过后端调用 OpenAI API 进行真实文字/图片任务识别。
 
 ## 功能范围
 
@@ -19,8 +19,30 @@
 
 ## 使用方式
 
-直接打开 `index.html` 即可使用。数据会保存在当前浏览器的 localStorage 中。
+安装 Node.js 20 或更高版本后，在项目目录运行：
+
+```bash
+cp .env.example .env
+```
+
+把 `.env` 里的 `OPENAI_API_KEY` 换成你的 OpenAI API Key，然后启动：
+
+```bash
+npm start
+```
+
+打开：
+
+```text
+http://localhost:3000
+```
+
+数据会保存在当前浏览器的 localStorage 中。AI 识别接口由 `server.js` 提供，避免把 API Key 暴露到浏览器里。
+
+GitHub Pages 仍可展示前端页面，但不能运行真实 AI 后端；真实 AI 识别需要使用 `npm start` 或部署到支持 Node 后端的平台。
 
 ## 安全边界
 
 系统只生成邮件、询价和采购草稿，不会自动发送邮件、询价或订单。客户证件、地址证明、资金来源等材料按高隐私级别处理。
+
+邮箱自动读取需要后续接入 Gmail 或 Outlook OAuth 授权；当前版本提供邮箱连接入口和邮件内容 AI 分类接口，不会自动读取或发送真实邮件。

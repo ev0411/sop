@@ -1,0 +1,13 @@
+{
+  "name": "personal-work-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive personal work dashboard with AI task recognition.",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check app.js && node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

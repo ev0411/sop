@@ -15,10 +15,13 @@ const seedState = {
   taskDraft: null,
   weeklyAiText: "把公司客户 Aurora Trading 的 Extract 文件和资金来源证明列入本周待办，2026-08-02 前完成，提前 1 周提醒。",
   weeklyAiImageName: "",
+  aiStatus: "",
   intakeText: "公司客户 Aurora Trading 需要在 2026-08-07 前完成 KYC/KYB，操作 CNY to AUD，需要提前 1 周提醒；目前进度：国内付款人确认中。还要补充 Extract 文件和资金来源证明。",
   emailConnected: false,
   emailLastSync: "",
   emailProvider: "Gmail / Outlook",
+  emailStatus: "",
+  emailDraftText: "客户邮件要求 2026-08-04 前补充 KYC 材料、地址证明和资金用途证明，需要当周提醒。",
   tasks: [
     {
       id: crypto.randomUUID(),
@@ -169,6 +172,7 @@ const seedState = {
 };
 
 let state = loadState();
+let weeklyAiImageDataUrl = "";
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -356,8 +360,8 @@ function renderWeekly(tasks) {
         <div class="classification-preview compact">
           <div><b>自动分类：</b>${preview.category} / ${preview.subcategory}</div>
           <div><b>对象：</b>${preview.object}　<b>截止：</b>${preview.dueDate}　<b>提醒：</b>${preview.reminder}</div>
-          <div><b>来源：</b>${state.weeklyAiImageName ? "图片识别 + 文字识别" : "文字识别"}　<b>状态：</b>待确认</div>
-          <button class="btn primary" data-action="add-weekly-ai-task">加入本周待办</button>
+          <div><b>来源：</b>${state.weeklyAiImageName ? "图片识别 + 文字识别" : "文字识别"}　<b>状态：</b>${state.aiStatus || "等待识别"}</div>
+          <button class="btn primary" data-action="add-weekly-ai-task">调用 AI 并加入本周待办</button>
         </div>
       </div>
     </section>
@@ -398,13 +402,15 @@ function renderEmail() {
             <strong>${state.emailProvider}</strong>
             <span>${state.emailConnected ? `上次同步：${state.emailLastSync || "尚未同步"}` : "连接后可读取邮件主题、发件人、正文待办、附件名和截止日期"}</span>
           </div>
+          <textarea class="textarea" data-email-text placeholder="这里会显示邮箱读取到的邮件内容；本地版本可先粘贴邮件正文测试 AI 分类">${escapeHtml(state.emailDraftText)}</textarea>
           <div class="toolbar">
             <button class="btn primary" data-action="connect-email">${state.emailConnected ? "重新授权" : "链接邮箱"}</button>
-            <button class="btn" data-action="sync-email">读取邮件并分类</button>
+            <button class="btn" data-action="sync-email">AI 读取邮件并分类</button>
           </div>
           <div class="classification-preview">
             <div><b>识别示例：</b>${preview.title}</div>
             <div><b>自动匹配：</b>${preview.category} / ${preview.subcategory}</div>
+            <div><b>状态：</b>${state.emailStatus || "等待邮箱授权或邮件输入"}</div>
             <div><b>安全边界：</b>只读取并生成待确认任务，不自动发送邮件或回复。</div>
           </div>
         </div>
@@ -700,6 +706,21 @@ function bindEvents() {
   document.querySelector("[data-weekly-ai-image]")?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];
     state.weeklyAiImageName = file ? file.name : "";
+    state.aiStatus = file ? "图片已选择，等待 AI 识别" : "";
+    if (!file) {
+      weeklyAiImageDataUrl = "";
+      saveState();
+      render();
+      return;
+    }
+    readFileAsDataUrl(file).then((dataUrl) => {
+      weeklyAiImageDataUrl = dataUrl;
+      saveState();
+      render();
+    });
+  });
+  document.querySelector("[data-email-text]")?.addEventListener("input", (event) => {
+    state.emailDraftText = event.target.value;
     saveState();
     render();
   });
@@ -732,7 +753,7 @@ function bindEvents() {
   document.querySelector("[data-form]")?.addEventListener("submit", saveTaskForm);
 }
 
-function handleAction(action) {
+async function handleAction(action) {
   if (action === "new") {
     state.taskDraft = {
       id: crypto.randomUUID(),
@@ -770,21 +791,39 @@ function handleAction(action) {
     const text = state.weeklyAiImageName
       ? `${state.weeklyAiText}\n图片 OCR：从 ${state.weeklyAiImageName} 中识别待办、日期、客户名称和文件事项。`
       : state.weeklyAiText;
-    state.tasks.unshift(classifyText(text, source));
-    state.weeklyAiText = "";
-    state.weeklyAiImageName = "";
+    state.aiStatus = "AI 识别中...";
+    saveState();
+    render();
+    try {
+      const task = await classifyWithAi({ text, imageDataUrl: weeklyAiImageDataUrl, source });
+      state.tasks.unshift(task);
+      state.weeklyAiText = "";
+      state.weeklyAiImageName = "";
+      weeklyAiImageDataUrl = "";
+      state.aiStatus = "已加入本周待办";
+    } catch (error) {
+      state.aiStatus = `AI 识别失败：${error.message}`;
+    }
   }
   if (action === "connect-email") {
     state.emailConnected = true;
     state.emailLastSync = "等待同步";
+    state.emailStatus = "邮箱授权入口已开启；接入 Gmail/Outlook OAuth 后可自动拉取真实邮件。";
   }
   if (action === "sync-email") {
     state.emailConnected = true;
-    state.emailLastSync = nowStamp();
-    state.tasks.unshift(
-      classifyText("邮件读取：客户邮件要求 2026-08-04 前补充 KYC 材料、地址证明和资金用途证明，需要当周提醒。", "邮件读取")
-    );
-    state.view = "weekly";
+    state.emailStatus = "AI 正在读取邮件内容...";
+    saveState();
+    render();
+    try {
+      const task = await classifyWithAi({ text: `邮件读取：${state.emailDraftText}`, source: "邮件读取" });
+      state.emailLastSync = nowStamp();
+      state.tasks.unshift(task);
+      state.emailStatus = "邮件内容已分类并加入当周待办";
+      state.view = "weekly";
+    } catch (error) {
+      state.emailStatus = `邮件 AI 分类失败：${error.message}`;
+    }
   }
   if (action === "simulate-ocr") {
     state.intakeText = "图片 OCR：活动海报显示 2026-08-12 举办客户沙龙，需要本周确认嘉宾邀请、海报文案和报名表。";
@@ -799,6 +838,28 @@ function handleAction(action) {
   }
   saveState();
   render();
+}
+
+async function classifyWithAi(payload) {
+  const response = await fetch("./api/classify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || "无法连接 AI 后端，请确认使用 npm start 启动，并设置 OPENAI_API_KEY。");
+  }
+  return result.task;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function saveTaskForm(event) {
