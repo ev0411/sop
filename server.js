@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { randomUUID } = require("crypto");
+const { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } = require("crypto");
 
 loadEnvFile();
 
@@ -10,7 +10,7 @@ const MODEL = process.env.OPENAI_MODEL || "gpt-5.6-luna";
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const PUBLIC_DIR = __dirname;
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
-const sessions = new Map();
+const SESSION_COOKIE = "work_dashboard_session";
 const oauthStates = new Map();
 
 const mimeTypes = {
@@ -133,16 +133,17 @@ async function handleAuthCallback(req, res, url, provider) {
   }
 
   const sessionId = randomUUID();
-  sessions.set(sessionId, {
+  const session = {
+    id: sessionId,
     provider,
     accessToken: token.access_token,
     refreshToken: token.refresh_token,
     expiresAt: Date.now() + Number(token.expires_in || 3600) * 1000,
     createdAt: Date.now(),
-  });
+  };
   res.writeHead(302, {
     Location: "/?email=connected",
-    "Set-Cookie": `work_dashboard_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`,
+    "Set-Cookie": buildSessionCookie(session),
   });
   res.end();
 }
@@ -169,6 +170,7 @@ async function handleEmailSync(req, res) {
   const body = await readJsonBody(req);
   const limit = Math.min(Number(body.limit || 5), 10);
   const messages = session.provider === "google" ? await fetchGmailMessages(session, limit) : await fetchMicrosoftMessages(session, limit);
+  if (session.dirty) setSessionCookie(res, session);
   if (!messages.length) {
     sendJson(res, 200, { messages: [], tasks: [] });
     return;
@@ -296,6 +298,7 @@ async function ensureFreshToken(session) {
   session.accessToken = token.access_token;
   session.refreshToken = token.refresh_token || session.refreshToken;
   session.expiresAt = Date.now() + Number(token.expires_in || 3600) * 1000;
+  session.dirty = true;
 }
 
 async function authedJson(url, session) {
@@ -351,13 +354,69 @@ function getOAuthConfig(provider) {
 }
 
 function getSession(req) {
-  const cookie = req.headers.cookie || "";
-  const sessionId = cookie
+  const sessionCookie = getCookie(req, SESSION_COOKIE);
+  return sessionCookie ? decryptSession(sessionCookie) : null;
+}
+
+function getCookie(req, name) {
+  return (req.headers.cookie || "")
     .split(";")
     .map((part) => part.trim())
-    .find((part) => part.startsWith("work_dashboard_session="))
-    ?.split("=")[1];
-  return sessionId ? sessions.get(sessionId) : null;
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+
+function buildSessionCookie(session) {
+  const cookieValue = encryptSession(session);
+  const secure = BASE_URL.startsWith("https://") ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${cookieValue}; HttpOnly; SameSite=Lax; Path=/; Max-Age=7776000${secure}`;
+}
+
+function setSessionCookie(res, session) {
+  res.setHeader("Set-Cookie", buildSessionCookie(session));
+}
+
+function encryptSession(session) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sessionKey(), iv);
+  const payload = JSON.stringify({
+    id: session.id || randomUUID(),
+    provider: session.provider,
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+    expiresAt: session.expiresAt,
+    createdAt: session.createdAt || Date.now(),
+  });
+  const encrypted = Buffer.concat([cipher.update(payload, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [iv, tag, encrypted].map((part) => part.toString("base64url")).join(".");
+}
+
+function decryptSession(cookieValue) {
+  try {
+    const [ivText, tagText, encryptedText] = cookieValue.split(".");
+    if (!ivText || !tagText || !encryptedText) return null;
+    const decipher = createDecipheriv("aes-256-gcm", sessionKey(), Buffer.from(ivText, "base64url"));
+    decipher.setAuthTag(Buffer.from(tagText, "base64url"));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedText, "base64url")),
+      decipher.final(),
+    ]).toString("utf8");
+    const session = JSON.parse(decrypted);
+    if (!["google", "microsoft"].includes(session.provider) || !session.refreshToken) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function sessionKey() {
+  const secret =
+    process.env.EMAIL_SESSION_SECRET ||
+    process.env.MICROSOFT_CLIENT_SECRET ||
+    process.env.GOOGLE_CLIENT_SECRET ||
+    "local-development-email-session-secret";
+  return createHash("sha256").update(secret).digest();
 }
 
 function normalizeTask(task, source, originalText) {
@@ -460,12 +519,14 @@ function redirect(res, location) {
 }
 
 function sendJson(res, status, payload) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
 }
 
 function sendText(res, status, text) {
-  res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
+  res.statusCode = status;
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.end(text);
 }
 
