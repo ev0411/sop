@@ -1,7 +1,15 @@
 const STORAGE_KEY = "work-dashboard-v1";
 
 const categories = ["全部", "业务端", "文件/合同", "行政类", "采购", "市场营销", "活动追踪"];
-const statuses = ["未开始", "进行中", "待确认", "已完成", "已暂停", "已逾期"];
+const statusByCategory = {
+  业务端: ["待确认", "待客户补材料", "KYC/KYB 当中", "合规审核中", "已完成", "已暂停", "已逾期"],
+  "文件/合同": ["待处理", "填写中", "待签署", "待提交", "已完成", "已暂停", "已逾期"],
+  行政类: ["待处理", "进行中", "待确认", "已完成", "已暂停", "已逾期"],
+  采购: ["待采购", "比价中", "待确认供应商", "已下单", "已完成", "已暂停", "已逾期"],
+  市场营销: ["待策划", "执行中", "待确认", "已发布", "已完成", "已暂停", "已逾期"],
+  活动追踪: ["待邀约", "报名确认中", "执行中", "复盘中", "已完成", "已暂停", "已逾期"],
+};
+const statuses = [...new Set(Object.values(statusByCategory).flat())];
 const priorities = ["高", "中", "低"];
 const directions = ["CNY to AUD", "CNY to USD", "AUD to CNY", "AUD to USD"];
 const today = "2026-07-30";
@@ -219,10 +227,11 @@ function filteredTasks() {
 
 function classifyText(text, source = "文字识别") {
   const rules = [
+    { keys: ["买", "购买", "采购", "报价", "询价", "商品", "供应商", "amazon", "淘宝", "京东", "下单", "预算"], category: "采购", subcategory: "行政类任务 - 采购" },
     { keys: ["护照", "photo id", "地址证明", "资金来源", "资金用途", "材料"], category: "业务端", subcategory: "客户材料收集" },
     { keys: ["kyc", "kyb", "合规", "付款人", "收款人", "交易方向"], category: "业务端", subcategory: "业务机会跟进" },
     { keys: ["表格", "合同", "填写", "签署", "文件", "老板"], category: "文件/合同", subcategory: "文件或合同跟进" },
-    { keys: ["采购", "报价", "商品", "供应商", "amazon", "淘宝"], category: "采购", subcategory: "行政类任务 - 采购" },
+    { keys: ["行政", "办公室", "会议室", "设备", "维修", "快递", "订票", "报销"], category: "行政类", subcategory: "行政任务" },
     { keys: ["市场营销", "活动", "campaign", "event", "海报"], category: "活动追踪", subcategory: "市场营销/活动追踪" },
   ];
   const lower = text.toLowerCase();
@@ -245,7 +254,7 @@ function classifyText(text, source = "文字识别") {
     dueDate: dateMatch ? dateMatch[0].replace(/[年月/.]/g, "-").replace(/-$/, "") : today,
     followDate: today,
     reminder: lower.includes("提前 1 周") ? "提前 1 周提醒" : lower.includes("当周") ? "当周提醒" : "指定日期提醒",
-    status: "待确认",
+    status: defaultStatusForCategory(match.category),
     priority: lower.includes("紧急") || lower.includes("逾期") ? "高" : "中",
     source,
     sourceLink: source === "图片识别" ? "图片上传" : source === "邮件读取" ? "邮箱同步" : "粘贴文本",
@@ -473,7 +482,6 @@ function taskRow(task) {
   return `
     <article class="task-row ${overdue ? "overdue" : ""}">
       <div class="task-title">
-        <input type="checkbox" ${task.status === "已完成" ? "checked" : ""} data-complete="${task.id}" aria-label="切换完成状态" />
         <div>
           <strong>${escapeHtml(task.title)}</strong>
           <small>${escapeHtml(task.object)} · ${escapeHtml(task.subcategory)} · 更新 ${escapeHtml(task.updatedAt)}</small>
@@ -486,10 +494,12 @@ function taskRow(task) {
         </div>
       </div>
       <span class="badge">${task.category}</span>
+      <select class="field status-select" data-status-change="${task.id}" aria-label="更新任务状态">
+        ${statusOptionsForCategory(task.category, task.status).map((item) => option(item, task.status)).join("")}
+      </select>
       <span>${task.dueDate || "无截止"}</span>
       <div class="mini-actions">
         <button title="编辑" data-edit="${task.id}">✎</button>
-        <button title="归档" data-archive="${task.id}">✓</button>
         <button title="删除" data-delete="${task.id}">×</button>
       </div>
     </article>
@@ -587,6 +597,7 @@ function renderBusiness() {
             <div class="badge-row"><span class="badge">${task.clientType}</span><span class="badge info">${task.direction || "无交易方向"}</span><span class="badge ${isOverdue(task) ? "high" : "mid"}">${task.reminder}</span></div>
             <div class="detail-list">
               <div><b>任务：</b>${task.title}</div>
+              <div><b>状态：</b>${task.status}</div>
               <div><b>操作截止：</b>${task.dueDate}　<b>跟进：</b>${task.followDate}</div>
               <div><b>当前进度：</b>${task.progressTags.length ? task.progressTags.join("、") : "待选择"}</div>
               <div><b>备注：</b>${task.notes}</div>
@@ -621,6 +632,8 @@ function renderPurchase() {
           <div class="toolbar compact-toolbar">
             <span class="badge private">不自动下单</span>
             <button class="btn ghost" data-action="edit-purchase">编辑需求</button>
+            <button class="btn ghost" data-action="refresh-purchase">重新检索商品</button>
+            <button class="btn warn" data-action="delete-purchase">删除需求</button>
           </div>
         </div>
         <div class="panel-body detail-list">
@@ -639,13 +652,7 @@ function renderPurchase() {
           ${purchase.products.map(
             (product, index) => `
               <article class="product-card">
-                <div class="card-head">
-                  <h4>${escapeHtml(product.title)}</h4>
-                  <div class="mini-actions">
-                    <button title="编辑商品" data-product-edit="${index}">✎</button>
-                    <button title="删除商品" data-product-delete="${index}">×</button>
-                  </div>
-                </div>
+                <h4>${escapeHtml(product.title)}</h4>
                 <div class="badge-row"><span class="badge">${product.source}</span><span class="badge ok">可靠性 ${product.reliability}</span></div>
                 <div class="detail-list">
                   <div><b>标价：</b>${product.price}　<b>GST：</b>${product.gst}</div>
@@ -699,15 +706,12 @@ function renderModal() {
         <div class="panel-body">
           <form class="form-grid" data-form>
             ${input("title", "任务标题", task.title)}
-            ${input("object", "客户名称/对象", task.object)}
-            ${select("category", "任务分类", ["业务端", "文件/合同", "行政类", "采购", "市场营销", "活动追踪"], task.category)}
-            ${input("subcategory", "二级分类", task.subcategory)}
-            ${select("clientType", "客户类型", ["待确认", "个人客户", "公司客户", "内部", "客户活动"], task.clientType)}
-            ${select("direction", "交易方向", ["", ...directions], task.direction)}
+            <label>任务分类<select class="field" name="category" data-task-category>${["业务端", "文件/合同", "行政类", "采购", "市场营销", "活动追踪"].map((item) => option(item, task.category)).join("")}</select></label>
+            ${renderTaskCategoryFields(task)}
             ${input("dueDate", "截止日期", task.dueDate, "date")}
             ${input("followDate", "跟进日期", task.followDate, "date")}
             ${select("reminder", "提醒规则", ["当日提醒", "当周提醒", "提前 1 周提醒", "指定日期提醒", "逾期提醒"], task.reminder)}
-            ${select("status", "当前状态", statuses, task.status)}
+            ${select("status", "当前状态", statusOptionsForCategory(task.category, task.status), task.status)}
             ${select("priority", "优先级", priorities, task.priority)}
             ${select("source", "来源", ["手动输入", "文字识别", "图片识别", "邮件读取", "采购实时搜索", "历史任务记录"], task.source)}
             <label class="wide">备注<textarea class="textarea" name="notes">${escapeHtml(task.notes || "")}</textarea></label>
@@ -722,12 +726,66 @@ function renderModal() {
   `;
 }
 
+function renderTaskCategoryFields(task) {
+  if (task.category === "业务端") {
+    return `
+      ${input("object", "客户名称/对象", task.object)}
+      ${input("subcategory", "业务事项", task.subcategory || "客户材料收集")}
+      ${select("clientType", "客户类型", ["待确认", "个人客户", "公司客户"], task.clientType)}
+      ${select("direction", "交易方向", ["", ...directions], task.direction)}
+    `;
+  }
+  if (task.category === "采购") {
+    return `
+      ${input("object", "采购对象/使用部门", task.object)}
+      ${input("subcategory", "采购类型", task.subcategory || "行政类任务 - 采购")}
+      ${input("sourceLink", "供应商/商品线索", task.sourceLink)}
+      <label>预算/规格<textarea class="textarea compact-textarea" name="purchaseBrief">${escapeHtml(task.purchaseBrief || task.notes || "")}</textarea></label>
+    `;
+  }
+  if (task.category === "文件/合同") {
+    return `
+      ${input("object", "文件/合同对象", task.object)}
+      ${input("subcategory", "文件类型", task.subcategory || "文件或合同跟进")}
+      ${input("sourceLink", "文件来源/附件名", task.sourceLink)}
+    `;
+  }
+  if (task.category === "行政类") {
+    return `
+      ${input("object", "行政对象/部门", task.object)}
+      ${input("subcategory", "行政事项", task.subcategory || "行政任务")}
+      ${input("sourceLink", "来源/地点/负责人", task.sourceLink)}
+    `;
+  }
+  if (task.category === "市场营销") {
+    return `
+      ${input("object", "项目/渠道", task.object)}
+      ${input("subcategory", "营销事项", task.subcategory || "市场营销")}
+      ${input("sourceLink", "素材/链接", task.sourceLink)}
+    `;
+  }
+  return `
+    ${input("object", "活动名称/对象", task.object)}
+    ${input("subcategory", "活动事项", task.subcategory || "活动追踪")}
+    ${input("sourceLink", "活动链接/名单来源", task.sourceLink)}
+  `;
+}
+
 function input(name, labelText, value, type = "text") {
   return `<label>${labelText}<input class="field" name="${name}" type="${type}" value="${escapeHtml(value || "")}" /></label>`;
 }
 
 function select(name, labelText, items, value) {
   return `<label>${labelText}<select class="field" name="${name}">${items.map((item) => option(item, value)).join("")}</select></label>`;
+}
+
+function statusOptionsForCategory(category, currentStatus = "") {
+  const options = statusByCategory[category] || statuses;
+  return currentStatus && !options.includes(currentStatus) ? [currentStatus, ...options] : options;
+}
+
+function defaultStatusForCategory(category) {
+  return statusOptionsForCategory(category)[0] || "待确认";
 }
 
 function option(item, value) {
@@ -805,6 +863,16 @@ function bindEvents() {
       render();
     })
   );
+  document.querySelectorAll("[data-status-change]").forEach((field) =>
+    field.addEventListener("change", () => {
+      const task = state.tasks.find((item) => item.id === field.dataset.statusChange);
+      if (!task) return;
+      task.status = field.value;
+      task.updatedAt = nowStamp();
+      saveState();
+      render();
+    })
+  );
   document.querySelectorAll("[data-client-edit]").forEach((button) =>
     button.addEventListener("click", () => editClient(Number(button.dataset.clientEdit)))
   );
@@ -847,12 +915,25 @@ function bindEvents() {
       render();
     })
   );
+  document.querySelector("[data-task-category]")?.addEventListener("change", (event) => {
+    state.taskDraft = applyCategoryDefaults({
+      ...state.taskDraft,
+      ...readTaskFormDraft(),
+      category: event.target.value,
+      subcategory: "",
+      clientType: "",
+      direction: "",
+      sourceLink: "",
+      status: "",
+    });
+    render();
+  });
   document.querySelector("[data-form]")?.addEventListener("submit", saveTaskForm);
 }
 
 async function handleAction(action) {
   if (action === "new") {
-    state.taskDraft = {
+    state.taskDraft = applyCategoryDefaults({
       id: crypto.randomUUID(),
       title: "",
       category: "业务端",
@@ -872,12 +953,29 @@ async function handleAction(action) {
       notes: "",
       progressTags: [],
       materials: [],
-    };
+    });
   }
   if (action === "close-modal") state.taskDraft = null;
   if (action === "edit-purchase") {
     editPurchase();
     return;
+  }
+  if (action === "refresh-purchase") {
+    state.purchase.products = buildPurchaseProducts(state.purchase);
+    state.purchase.searchedAt = nowStamp();
+    state.purchase.status = "已重新检索";
+  }
+  if (action === "delete-purchase") {
+    state.purchase = {
+      keyword: "",
+      budget: "",
+      region: "",
+      quantity: 1,
+      requirements: "",
+      searchedAt: nowStamp(),
+      status: "已清空",
+      products: [],
+    };
   }
   if (action === "reset") {
     localStorage.removeItem(STORAGE_KEY);
@@ -1009,13 +1107,37 @@ function readFileAsDataUrl(file) {
 function saveTaskForm(event) {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target).entries());
-  const task = { ...state.taskDraft, ...data, updatedAt: nowStamp() };
+  const task = applyCategoryDefaults({ ...state.taskDraft, ...data, updatedAt: nowStamp() });
   const index = state.tasks.findIndex((item) => item.id === task.id);
   if (index >= 0) state.tasks[index] = task;
   else state.tasks.unshift(task);
   state.taskDraft = null;
   saveState();
   render();
+}
+
+function readTaskFormDraft() {
+  const form = document.querySelector("[data-form]");
+  return form ? Object.fromEntries(new FormData(form).entries()) : {};
+}
+
+function applyCategoryDefaults(task) {
+  const defaults = {
+    业务端: { subcategory: "客户材料收集", clientType: "待确认", direction: "", sourceLink: task.sourceLink || "" },
+    "文件/合同": { subcategory: "文件或合同跟进", clientType: "内部", direction: "", sourceLink: task.sourceLink || "文件附件" },
+    行政类: { subcategory: "行政任务", clientType: "内部", direction: "", sourceLink: task.sourceLink || "行政事项" },
+    采购: { subcategory: "行政类任务 - 采购", clientType: "内部", direction: "", sourceLink: task.sourceLink || "采购需求" },
+    市场营销: { subcategory: "市场营销", clientType: "客户活动", direction: "", sourceLink: task.sourceLink || "营销素材" },
+    活动追踪: { subcategory: "活动追踪", clientType: "客户活动", direction: "", sourceLink: task.sourceLink || "活动记录" },
+  };
+  const categoryDefaults = defaults[task.category] || defaults["业务端"];
+  const statusOptions = statusOptionsForCategory(task.category, task.status);
+  const validStatus = statusOptions.includes(task.status) ? task.status : defaultStatusForCategory(task.category);
+  return {
+    ...task,
+    ...Object.fromEntries(Object.entries(categoryDefaults).map(([key, value]) => [key, task[key] || value])),
+    status: validStatus,
+  };
 }
 
 function archiveTask(id) {
@@ -1104,9 +1226,98 @@ function editPurchase() {
     quantity: Number(quantity) || 1,
     requirements: requirements.trim(),
     searchedAt: nowStamp(),
+    status: "已重新检索",
   };
+  state.purchase.products = buildPurchaseProducts(state.purchase);
   saveState();
   render();
+}
+
+function buildPurchaseProducts(purchase) {
+  const keyword = purchase.keyword || "采购商品";
+  const lower = keyword.toLowerCase();
+  if (lower.includes("咖啡") || lower.includes("delonghi") || lower.includes("德龙")) {
+    return [
+      {
+        title: "DeLonghi Dedica Arte Coffee Machine",
+        source: "De'Longhi Australia",
+        price: "按官网实时价格",
+        gst: "官网确认",
+        shipping: "结账页确认",
+        eta: "按官网配送",
+        rating: "官网型号",
+        landed: purchase.budget || "待确认",
+        reliability: "高",
+        link: "https://www.delonghi.com/en-au/p/dedica-manual-espresso-makers-dedica-arte-manual-coffee-machine-ec885.m/EC885.M.html",
+      },
+      {
+        title: "Delonghi Magnifica Start",
+        source: "De'Longhi Australia",
+        price: "按官网实时价格",
+        gst: "官网确认",
+        shipping: "结账页确认",
+        eta: "按官网配送",
+        rating: "官网型号",
+        landed: purchase.budget || "待确认",
+        reliability: "高",
+        link: "https://www.delonghi.com/en-au/p/magnifica-start-magnifica-start-silver-black-automatic-coffee-machine-ecam220.31.sb/ECAM220.31.SB.html",
+      },
+    ];
+  }
+  if (lower.includes("碎纸") || lower.includes("shredder")) {
+    return [
+      {
+        title: `${keyword} - Amazon Australia 候选`,
+        source: "Amazon Australia",
+        price: "打开来源确认",
+        gst: "需确认",
+        shipping: "需确认",
+        eta: "需确认",
+        rating: "按页面评分",
+        landed: purchase.budget || "待确认",
+        reliability: "中",
+        link: "https://www.amazon.com.au/s?k=" + encodeURIComponent(keyword),
+      },
+      {
+        title: `${keyword} - Officeworks 候选`,
+        source: "Officeworks",
+        price: "打开来源确认",
+        gst: "通常含 GST",
+        shipping: "需确认",
+        eta: "需确认",
+        rating: "按页面评分",
+        landed: purchase.budget || "待确认",
+        reliability: "中",
+        link: "https://www.officeworks.com.au/shop/officeworks/search?q=" + encodeURIComponent(keyword),
+      },
+    ];
+  }
+  return [
+    {
+      title: `${keyword} - Amazon Australia 候选`,
+      source: "Amazon Australia",
+      price: "打开来源确认",
+      gst: "需确认",
+      shipping: "需确认",
+      eta: "需确认",
+      rating: "按页面评分",
+      landed: purchase.budget || "待确认",
+      reliability: "中",
+      link: "https://www.amazon.com.au/s?k=" + encodeURIComponent(keyword),
+    },
+    {
+      title: `${keyword} - Google 商品来源`,
+      source: "Google Search",
+      price: "打开来源确认",
+      gst: "需确认",
+      shipping: "需确认",
+      eta: "需确认",
+      rating: "按页面评分",
+      landed: purchase.budget || "待确认",
+      reliability: "中",
+      link: "https://www.google.com/search?q=" + encodeURIComponent(`${keyword} Australia buy`),
+    },
+  ];
 }
 
 function editProduct(index) {

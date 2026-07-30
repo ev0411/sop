@@ -316,7 +316,7 @@ button {
 
 .task-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px 125px 104px;
+  grid-template-columns: minmax(0, 1fr) 120px 180px 120px 78px;
   gap: 12px;
   align-items: center;
   padding: 13px;
@@ -340,6 +340,11 @@ button {
   margin-top: 4px;
   width: 17px;
   height: 17px;
+}
+
+.status-select {
+  min-height: 34px;
+  padding: 6px 9px;
 }
 
 .task-title strong {
