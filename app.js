@@ -154,7 +154,7 @@ const seedState = {
         rating: "4.6",
         landed: "AUD 279",
         reliability: "高",
-        link: "https://www.amazon.com.au/",
+        link: "https://www.delonghi.com/en-au/p/dedica-manual-espresso-makers-dedica-arte-manual-coffee-machine-ec885.m/EC885.M.html",
       },
       {
         title: "Delonghi Magnifica Start",
@@ -166,7 +166,7 @@ const seedState = {
         rating: "4.5",
         landed: "AUD 504",
         reliability: "中",
-        link: "https://www.google.com/search?q=Delonghi+Magnifica+Start+Australia",
+        link: "https://www.delonghi.com/en-au/p/magnifica-start-magnifica-start-silver-black-automatic-coffee-machine-ecam220.31.sb/ECAM220.31.SB.html",
       },
     ],
   },
@@ -177,12 +177,24 @@ let weeklyAiImageDataUrl = "";
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return structuredClone(seedState);
+  if (!saved) return normalizeState(structuredClone(seedState));
   try {
-    return { ...structuredClone(seedState), ...JSON.parse(saved) };
+    return normalizeState({ ...structuredClone(seedState), ...JSON.parse(saved) });
   } catch {
-    return structuredClone(seedState);
+    return normalizeState(structuredClone(seedState));
   }
+}
+
+function normalizeState(nextState) {
+  const detailLinks = {
+    "DeLonghi Dedica Arte Coffee Machine": "https://www.delonghi.com/en-au/p/dedica-manual-espresso-makers-dedica-arte-manual-coffee-machine-ec885.m/EC885.M.html",
+    "Delonghi Magnifica Start": "https://www.delonghi.com/en-au/p/magnifica-start-magnifica-start-silver-black-automatic-coffee-machine-ecam220.31.sb/ECAM220.31.SB.html",
+  };
+  nextState.purchase.products = nextState.purchase.products.map((product) => ({
+    ...product,
+    link: detailLinks[product.title] || product.link,
+  }));
+  return nextState;
 }
 
 function saveState() {
@@ -289,7 +301,6 @@ function render() {
             <p class="motto">人情可送马，买卖不饶针</p>
           </div>
           <div class="toolbar">
-            <button class="btn ghost" data-action="reset">重置示例</button>
             <button class="btn primary" data-action="new">新增任务</button>
           </div>
         </section>
@@ -605,7 +616,13 @@ function renderPurchase() {
   return `
     <section class="purchase-layout">
       <div class="panel">
-        <div class="panel-head"><h3>采购需求</h3><span class="badge private">不自动下单</span></div>
+        <div class="panel-head">
+          <h3>采购需求</h3>
+          <div class="toolbar compact-toolbar">
+            <span class="badge private">不自动下单</span>
+            <button class="btn ghost" data-action="edit-purchase">编辑需求</button>
+          </div>
+        </div>
         <div class="panel-body detail-list">
           <div><b>关键词：</b>${purchase.keyword}</div>
           <div><b>预算：</b>${purchase.budget}</div>
@@ -620,9 +637,15 @@ function renderPurchase() {
         <div class="panel-head"><h3>商品比较</h3><span class="badge info">示例结果，可替换实时搜索源</span></div>
         <div class="panel-body module-grid">
           ${purchase.products.map(
-            (product) => `
+            (product, index) => `
               <article class="product-card">
-                <h4>${product.title}</h4>
+                <div class="card-head">
+                  <h4>${escapeHtml(product.title)}</h4>
+                  <div class="mini-actions">
+                    <button title="编辑商品" data-product-edit="${index}">✎</button>
+                    <button title="删除商品" data-product-delete="${index}">×</button>
+                  </div>
+                </div>
                 <div class="badge-row"><span class="badge">${product.source}</span><span class="badge ok">可靠性 ${product.reliability}</span></div>
                 <div class="detail-list">
                   <div><b>标价：</b>${product.price}　<b>GST：</b>${product.gst}</div>
@@ -631,7 +654,7 @@ function renderPurchase() {
                   <div><a href="${product.link}" target="_blank" rel="noreferrer">查看原始来源</a></div>
                 </div>
               </article>`
-          ).join("")}
+          ).join("") || `<div class="empty">暂无商品比较</div>`}
         </div>
       </div>
     </section>
@@ -802,6 +825,16 @@ function bindEvents() {
       render();
     })
   );
+  document.querySelectorAll("[data-product-edit]").forEach((button) =>
+    button.addEventListener("click", () => editProduct(Number(button.dataset.productEdit)))
+  );
+  document.querySelectorAll("[data-product-delete]").forEach((button) =>
+    button.addEventListener("click", () => {
+      state.purchase.products.splice(Number(button.dataset.productDelete), 1);
+      saveState();
+      render();
+    })
+  );
   document.querySelectorAll("[data-archive]").forEach((button) =>
     button.addEventListener("click", () => archiveTask(button.dataset.archive))
   );
@@ -842,6 +875,10 @@ async function handleAction(action) {
     };
   }
   if (action === "close-modal") state.taskDraft = null;
+  if (action === "edit-purchase") {
+    editPurchase();
+    return;
+  }
   if (action === "reset") {
     localStorage.removeItem(STORAGE_KEY);
     state = structuredClone(seedState);
@@ -1041,6 +1078,72 @@ function editHistory(index) {
     done: Number(nextDone) || 0,
     open: Number(nextOpen) || 0,
     overdue: Number(nextOverdue) || 0,
+  };
+  saveState();
+  render();
+}
+
+function editPurchase() {
+  const purchase = state.purchase;
+  const keyword = prompt("采购关键词", purchase.keyword);
+  if (keyword === null) return;
+  const budget = prompt("预算", purchase.budget);
+  if (budget === null) return;
+  const region = prompt("地区/平台", purchase.region);
+  if (region === null) return;
+  const quantity = prompt("数量", purchase.quantity);
+  if (quantity === null) return;
+  const requirements = prompt("采购要求", purchase.requirements);
+  if (requirements === null) return;
+
+  state.purchase = {
+    ...purchase,
+    keyword: keyword.trim() || purchase.keyword,
+    budget: budget.trim() || purchase.budget,
+    region: region.trim(),
+    quantity: Number(quantity) || 1,
+    requirements: requirements.trim(),
+    searchedAt: nowStamp(),
+  };
+  saveState();
+  render();
+}
+
+function editProduct(index) {
+  const product = state.purchase.products[index];
+  if (!product) return;
+  const title = prompt("商品名称", product.title);
+  if (title === null) return;
+  const source = prompt("来源平台", product.source);
+  if (source === null) return;
+  const price = prompt("标价", product.price);
+  if (price === null) return;
+  const gst = prompt("GST", product.gst);
+  if (gst === null) return;
+  const shipping = prompt("配送费用", product.shipping);
+  if (shipping === null) return;
+  const eta = prompt("预计到货", product.eta);
+  if (eta === null) return;
+  const rating = prompt("评分", product.rating);
+  if (rating === null) return;
+  const landed = prompt("落地成本", product.landed);
+  if (landed === null) return;
+  const reliability = prompt("可靠性", product.reliability);
+  if (reliability === null) return;
+  const link = prompt("商品详情页链接", product.link);
+  if (link === null) return;
+
+  state.purchase.products[index] = {
+    title: title.trim() || product.title,
+    source: source.trim() || product.source,
+    price: price.trim() || product.price,
+    gst: gst.trim() || product.gst,
+    shipping: shipping.trim() || product.shipping,
+    eta: eta.trim() || product.eta,
+    rating: rating.trim() || product.rating,
+    landed: landed.trim() || product.landed,
+    reliability: reliability.trim() || product.reliability,
+    link: link.trim() || product.link,
   };
   saveState();
   render();
