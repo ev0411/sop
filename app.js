@@ -21,6 +21,7 @@ const seedState = {
   emailLastSync: "",
   emailProvider: "Gmail / Outlook",
   emailStatus: "",
+  emailMessages: [],
   emailDraftText: "客户邮件要求 2026-08-04 前补充 KYC 材料、地址证明和资金用途证明，需要当周提醒。",
   tasks: [
     {
@@ -390,6 +391,7 @@ function renderWeekly(tasks) {
 
 function renderEmail() {
   const preview = classifyText("邮件读取：客户邮件要求 2026-08-04 前补充 KYC 材料、地址证明和资金用途证明，需要当周提醒。", "邮件读取");
+  const messages = state.emailMessages || [];
   return `
     <section class="grid">
       <div class="panel">
@@ -404,14 +406,19 @@ function renderEmail() {
           </div>
           <textarea class="textarea" data-email-text placeholder="这里会显示邮箱读取到的邮件内容；本地版本可先粘贴邮件正文测试 AI 分类">${escapeHtml(state.emailDraftText)}</textarea>
           <div class="toolbar">
-            <button class="btn primary" data-action="connect-email">${state.emailConnected ? "重新授权" : "链接邮箱"}</button>
-            <button class="btn" data-action="sync-email">AI 读取邮件并分类</button>
+            <button class="btn primary" data-action="connect-gmail">链接 Gmail</button>
+            <button class="btn primary" data-action="connect-outlook">链接 Outlook</button>
+            <button class="btn" data-action="check-email-status">检查连接</button>
+            <button class="btn" data-action="sync-email">读取最近邮件并 AI 分类</button>
           </div>
           <div class="classification-preview">
             <div><b>识别示例：</b>${preview.title}</div>
             <div><b>自动匹配：</b>${preview.category} / ${preview.subcategory}</div>
             <div><b>状态：</b>${state.emailStatus || "等待邮箱授权或邮件输入"}</div>
             <div><b>安全边界：</b>只读取并生成待确认任务，不自动发送邮件或回复。</div>
+          </div>
+          <div class="email-message-list">
+            ${messages.length ? messages.map(emailMessageRow).join("") : `<div class="empty">尚未读取邮件</div>`}
           </div>
         </div>
       </div>
@@ -425,6 +432,16 @@ function renderEmail() {
         </div>
       </div>
     </section>
+  `;
+}
+
+function emailMessageRow(message) {
+  return `
+    <article class="email-message">
+      <strong>${escapeHtml(message.subject)}</strong>
+      <span>${escapeHtml(message.from)} · ${escapeHtml(message.date)}</span>
+      <p>${escapeHtml(message.preview)}</p>
+    </article>
   `;
 }
 
@@ -805,24 +822,43 @@ async function handleAction(action) {
       state.aiStatus = `AI 识别失败：${error.message}`;
     }
   }
-  if (action === "connect-email") {
-    state.emailConnected = true;
-    state.emailLastSync = "等待同步";
-    state.emailStatus = "邮箱授权入口已开启；接入 Gmail/Outlook OAuth 后可自动拉取真实邮件。";
+  if (action === "connect-gmail") {
+    location.href = "./auth/google";
+    return;
   }
-  if (action === "sync-email") {
-    state.emailConnected = true;
-    state.emailStatus = "AI 正在读取邮件内容...";
+  if (action === "connect-outlook") {
+    location.href = "./auth/microsoft";
+    return;
+  }
+  if (action === "check-email-status") {
+    state.emailStatus = "正在检查邮箱连接...";
     saveState();
     render();
     try {
-      const task = await classifyWithAi({ text: `邮件读取：${state.emailDraftText}`, source: "邮件读取" });
+      const status = await fetchEmailStatus();
+      state.emailConnected = status.connected;
+      state.emailProvider = status.provider || "Gmail / Outlook";
+      state.emailStatus = status.connected
+        ? `已连接 ${status.provider === "google" ? "Gmail" : "Outlook"}`
+        : `尚未连接。Gmail 配置：${status.configured.google ? "已配置" : "未配置"}；Outlook 配置：${status.configured.microsoft ? "已配置" : "未配置"}`;
+    } catch (error) {
+      state.emailStatus = `连接检查失败：${error.message}`;
+    }
+  }
+  if (action === "sync-email") {
+    state.emailStatus = "正在读取邮箱最近邮件并交给 AI 分类...";
+    saveState();
+    render();
+    try {
+      const result = await syncEmailWithAi();
       state.emailLastSync = nowStamp();
-      state.tasks.unshift(task);
-      state.emailStatus = "邮件内容已分类并加入当周待办";
+      state.emailConnected = true;
+      state.emailMessages = result.messages || [];
+      state.tasks.unshift(...(result.tasks || []));
+      state.emailStatus = `已读取 ${state.emailMessages.length} 封邮件，并生成 ${(result.tasks || []).length} 条待确认任务`;
       state.view = "weekly";
     } catch (error) {
-      state.emailStatus = `邮件 AI 分类失败：${error.message}`;
+      state.emailStatus = `邮箱读取失败：${error.message}`;
     }
   }
   if (action === "simulate-ocr") {
@@ -851,6 +887,30 @@ async function classifyWithAi(payload) {
     throw new Error(result.error || "无法连接 AI 后端，请确认使用 npm start 启动，并设置 OPENAI_API_KEY。");
   }
   return result.task;
+}
+
+async function fetchEmailStatus() {
+  const response = await fetch("./api/email/status");
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "无法检查邮箱连接");
+  return result;
+}
+
+async function syncEmailWithAi() {
+  const response = await fetch("./api/email/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ limit: 5 }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (state.emailDraftText) {
+      const task = await classifyWithAi({ text: `邮件读取：${state.emailDraftText}`, source: "邮件读取" });
+      return { messages: [{ subject: "手动粘贴邮件内容", from: "本地输入", date: nowStamp(), preview: state.emailDraftText }], tasks: [task] };
+    }
+    throw new Error(result.error || "无法读取邮箱，请先完成 Gmail/Outlook 授权。");
+  }
+  return result;
 }
 
 function readFileAsDataUrl(file) {

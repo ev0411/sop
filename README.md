@@ -45,4 +45,13 @@ GitHub Pages 仍可展示前端页面，但不能运行真实 AI 后端；真实
 
 系统只生成邮件、询价和采购草稿，不会自动发送邮件、询价或订单。客户证件、地址证明、资金来源等材料按高隐私级别处理。
 
-邮箱自动读取需要后续接入 Gmail 或 Outlook OAuth 授权；当前版本提供邮箱连接入口和邮件内容 AI 分类接口，不会自动读取或发送真实邮件。
+邮箱自动读取使用 Gmail / Outlook 官方 OAuth 授权，不会在 Dashboard 中收集或保存邮箱密码。
+
+OAuth 回调地址：
+
+```text
+Gmail: BASE_URL/auth/google/callback
+Outlook: BASE_URL/auth/microsoft/callback
+```
+
+部署到线上平台时，需要把 `.env.example` 中的变量配置到平台的环境变量里，并将 `BASE_URL` 改成线上网址。
