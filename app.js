@@ -713,11 +713,16 @@ function bindEvents() {
   document.querySelector("[data-intake]")?.addEventListener("input", (event) => {
     state.intakeText = event.target.value;
     saveState();
+  });
+  document.querySelector("[data-intake]")?.addEventListener("blur", () => {
     render();
   });
   document.querySelector("[data-weekly-ai-text]")?.addEventListener("input", (event) => {
     state.weeklyAiText = event.target.value;
+    state.aiStatus = "已输入，等待 AI 识别";
     saveState();
+  });
+  document.querySelector("[data-weekly-ai-text]")?.addEventListener("blur", () => {
     render();
   });
   document.querySelector("[data-weekly-ai-image]")?.addEventListener("change", (event) => {
@@ -739,6 +744,8 @@ function bindEvents() {
   document.querySelector("[data-email-text]")?.addEventListener("input", (event) => {
     state.emailDraftText = event.target.value;
     saveState();
+  });
+  document.querySelector("[data-email-text]")?.addEventListener("blur", () => {
     render();
   });
   document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button.dataset.action)));
