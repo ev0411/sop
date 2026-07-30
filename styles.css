@@ -638,11 +638,12 @@ label {
 
 .quote {
   white-space: pre-wrap;
-  line-height: 1.6;
-  padding: 12px;
+  line-height: 1.65;
+  padding: 14px;
   background: #fbfbfd;
   border: 1px solid var(--line);
   border-radius: 8px;
+  color: #424245;
 }
 
 @media (max-width: 1050px) {

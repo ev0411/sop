@@ -623,7 +623,32 @@ function renderDocs() {
 
 function renderPurchase() {
   const purchase = state.purchase;
-  const quote = `您好，\n\n我们计划采购 ${purchase.keyword}，数量 ${purchase.quantity}，预算 ${purchase.budget}。希望了解含 GST 报价、配送费用、预计到货时间以及保修/退换政策。\n\n请提供可选型号和正式报价。谢谢。\n\n注：此为系统生成草稿，发送前需要人工确认。`;
+  const purchaseItem = purchase.keyword || "相关商品/设备";
+  const budgetText = purchase.budget || "待确认";
+  const requirementText = purchase.requirements || "请提供适合办公使用的型号建议";
+  const quote = [
+    "【中文询价草稿】",
+    "您好，",
+    "",
+    `我们计划采购 ${purchaseItem}，数量 ${purchase.quantity || 1}，预算 ${budgetText}。`,
+    `主要要求：${requirementText}。`,
+    "希望了解含 GST 报价、配送费用、预计到货时间，以及保修/退换政策。",
+    "",
+    "请提供可选型号、正式报价和商品详情链接。谢谢。",
+    "",
+    "注：此为系统生成草稿，发送前需要人工确认。",
+    "",
+    "【English enquiry draft】",
+    "Hello,",
+    "",
+    `We are planning to purchase ${purchaseItem}. Quantity: ${purchase.quantity || 1}. Budget: ${budgetText}.`,
+    `Key requirements: ${requirementText}.`,
+    "Could you please provide the quotation including GST, delivery cost, estimated delivery time, and warranty/return policy?",
+    "",
+    "Please also share the available model options, formal quotation, and product detail link.",
+    "",
+    "Note: This is a system-generated draft and should be reviewed manually before sending.",
+  ].join("\n");
   return `
     <section class="purchase-layout">
       <div class="panel">
